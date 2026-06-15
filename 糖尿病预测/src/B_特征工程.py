@@ -67,6 +67,41 @@ def save_csv(df, path):
     """统一保存 CSV，避免中文表头在 Excel 中显示乱码。"""
     df.to_csv(path, index=False, encoding='utf-8-sig')
 
+
+def normalize_input_columns(df):
+    """兼容 A 成员清洗后可能出现的列名细微差异。"""
+    df = df.copy()
+    df.columns = [col.strip() for col in df.columns]
+    rename_map = {
+        'delayedhealing': 'delayed healing',
+        'DelayedHealing': 'delayed healing',
+        'Delayed healing': 'delayed healing',
+        'Sudden weight loss': 'sudden weight loss',
+        'Visual blurring': 'visual blurring',
+        'Partial paresis': 'partial paresis',
+        'Muscle stiffness': 'muscle stiffness',
+    }
+    df = df.rename(columns={col: rename_map.get(col, col) for col in df.columns})
+    return df
+
+
+def encode_binary_column(series, mapping, col_name):
+    """兼容原始字符型数据和 A 清洗后的 0/1 数值型数据。"""
+    if pd.api.types.is_numeric_dtype(series):
+        encoded = pd.to_numeric(series, errors='coerce')
+    else:
+        normalized = series.astype(str).str.strip()
+        encoded = normalized.map(mapping)
+        numeric_mask = encoded.isna()
+        encoded.loc[numeric_mask] = pd.to_numeric(
+            normalized.loc[numeric_mask], errors='coerce')
+
+    allowed_values = {0, 1, 0.0, 1.0}
+    invalid_values = sorted(set(encoded.dropna().unique()) - allowed_values)
+    if invalid_values:
+        raise ValueError(f"{col_name} 存在非 0/1 取值: {invalid_values}")
+    return encoded.astype('Int64')
+
 # ============================================================================
 # 1. 加载数据
 # ============================================================================
@@ -78,7 +113,8 @@ input_file = os.path.join(DATA_DIR, 'cleaned_糖尿病预测.csv')
 if not os.path.exists(input_file):
     input_file = os.path.join(DATA_DIR, '糖尿病预测.csv')
 
-df_raw = pd.read_csv(input_file)
+df_raw = normalize_input_columns(pd.read_csv(input_file))
+print(f"  输入文件: {input_file}")
 
 print(f"\n[OK] 数据加载成功: {df_raw.shape[0]} 行 x {df_raw.shape[1]} 列\n")
 
@@ -101,17 +137,26 @@ print(f"  目标变量: {target}")
 
 # 2.2 类别特征编码（Yes/No -> 1/0，Male/Female -> 1/0）
 df_encoded = df_raw.copy()
-df_encoded['Gender'] = df_encoded['Gender'].map({'Male': 1, 'Female': 0})
+gender_map = {'Male': 1, 'Female': 0, 'male': 1, 'female': 0,
+              'M': 1, 'F': 0, '男': 1, '女': 0}
+yes_no_map = {'Yes': 1, 'No': 0, 'yes': 1, 'no': 0,
+              'Y': 1, 'N': 0, '是': 1, '否': 0, '有': 1, '无': 0}
+target_map = {'Positive': 1, 'Negative': 0, 'positive': 1, 'negative': 0,
+              '患病': 1, '未患病': 0}
+
+df_encoded['Gender'] = encode_binary_column(df_encoded['Gender'], gender_map, 'Gender')
 for col in binary_features:
     if col != 'Gender':  # Gender 已处理
-        df_encoded[col] = df_encoded[col].map({'Yes': 1, 'No': 0})
+        df_encoded[col] = encode_binary_column(df_encoded[col], yes_no_map, col)
 
 # 目标编码：Positive=1, Negative=0
-df_encoded['class'] = df_encoded['class'].map({'Positive': 1, 'Negative': 0})
+df_encoded['class'] = encode_binary_column(df_encoded['class'], target_map, 'class')
 
 if df_encoded.isnull().any().any():
     missing_cols = df_encoded.columns[df_encoded.isnull().any()].tolist()
     raise ValueError(f"编码后存在缺失值，请检查字段取值: {missing_cols}")
+
+df_encoded = df_encoded.astype(float)
 
 print("\n[数据] 目标变量分布:")
 print(f"   正样本 (Positive): {df_encoded['class'].sum()}  ({df_encoded['class'].mean()*100:.1f}%)")
@@ -179,14 +224,24 @@ print("-" * 60)
 df_feat = df_encoded.copy()
 
 # 3.1 年龄分组特征
-df_feat['Age_Group'] = pd.cut(df_feat['Age'],
-                               bins=[0, 30, 40, 50, 60, 100],
-                               labels=['<30', '30-40', '40-50', '50-60', '60+'])
+# 若 A 成员已对 Age 做标准化，则改用分位数分组，避免年龄分组全部落空。
+if df_feat['Age'].min() < 0 or df_feat['Age'].max() <= 5:
+    df_feat['Age_Group'] = pd.qcut(
+        df_feat['Age'],
+        q=5,
+        labels=['Q1_low', 'Q2', 'Q3', 'Q4', 'Q5_high'],
+        duplicates='drop'
+    )
+    print("   [OK] 年龄分位数组特征 (Age_Q1_low ~ Age_Q5_high，适配标准化 Age)")
+else:
+    df_feat['Age_Group'] = pd.cut(df_feat['Age'],
+                                  bins=[0, 30, 40, 50, 60, 100],
+                                  labels=['<30', '30-40', '40-50', '50-60', '60+'])
+    print("   [OK] 年龄分组特征 (Age_<30, Age_30-40, Age_40-50, Age_50-60, Age_60+)")
 
 # One-Hot 编码年龄分组
 age_dummies = pd.get_dummies(df_feat['Age_Group'], prefix='Age')
 df_feat = pd.concat([df_feat, age_dummies.astype(int)], axis=1)
-print("   [OK] 年龄分组特征 (Age_<30, Age_30-40, Age_40-50, Age_50-60, Age_60+)")
 
 # 3.2 典型糖尿病症状组合评分（基于医学常识）
 # 多尿(Polyuria) + 烦渴(Polydipsia) + 多食(Polyphagia) = 典型"三多"症状
