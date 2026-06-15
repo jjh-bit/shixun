@@ -1,0 +1,29 @@
+﻿特征,字段说明,是否推荐给C建模
+Age,年龄，原始数值特征,是
+Gender,性别编码，Male=1，Female=0,是
+Polyuria,多尿症状编码，Yes=1，No=0,是
+Polydipsia,烦渴症状编码，Yes=1，No=0,是
+sudden weight loss,突然体重下降编码，Yes=1，No=0,是
+weakness,乏力编码，Yes=1，No=0,否
+Polyphagia,多食症状编码，Yes=1，No=0,是
+Genital thrush,生殖器念珠菌感染编码，Yes=1，No=0,是
+visual blurring,视力模糊编码，Yes=1，No=0,是
+Itching,瘙痒编码，Yes=1，No=0,是
+Irritability,易怒编码，Yes=1，No=0,是
+delayed healing,伤口愈合延迟编码，Yes=1，No=0,是
+partial paresis,局部麻痹编码，Yes=1，No=0,是
+muscle stiffness,肌肉僵硬编码，Yes=1，No=0,否
+Alopecia,脱发编码，Yes=1，No=0,是
+Obesity,肥胖编码，Yes=1，No=0,否
+Age_<30,年龄小于 30 岁分组,否
+Age_30-40,年龄 30-40 岁分组,是
+Age_40-50,年龄 40-50 岁分组,否
+Age_50-60,年龄 50-60 岁分组,否
+Age_60+,年龄 60 岁以上分组,否
+Triad_Score,典型三多症状评分，多尿+烦渴+多食，取值 0-3,是
+Metabolic_Score,代谢相关症状评分，肥胖+乏力+视力模糊+愈合延迟，取值 0-4,是
+Neural_Score,神经相关症状评分，局部麻痹+肌肉僵硬+脱发，取值 0-3,否
+Age_obesity_interaction,年龄与肥胖交互项，用于表达年龄增长叠加肥胖风险,是
+Age_polyuria_interaction,年龄与多尿交互项，用于表达年龄增长叠加典型症状风险,是
+Total_Symptoms,14 个症状的总数，取值 0-14,是
+class,目标标签，Positive=1，Negative=0,是
