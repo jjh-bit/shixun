@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# 数据集（原始数据太大不上传）
+糖尿病预测/data/糖尿病预测.csv
+糖尿病预测/data/数据_编码后.csv
+
+# 模型文件（太大）
+糖尿病预测/models/
+*.pth
+*.pt
+*.h5
+*.pkl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统
+Thumbs.db
+.DS_Store
+
+~$*.docx

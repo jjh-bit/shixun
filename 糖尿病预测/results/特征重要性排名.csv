@@ -1,0 +1,28 @@
+特征,卡方排名,互信息排名,Lasso保留,平均排名
+Age,1.0,1.0,True,1.0
+Gender,2.0,2.0,True,2.0
+Polyuria,3.0,3.0,True,3.0
+Polydipsia,4.0,4.0,True,4.0
+sudden weight loss,5.0,5.0,True,5.0
+weakness,6.0,6.0,True,6.0
+Polyphagia,7.0,7.0,True,7.0
+Genital thrush,8.0,8.0,True,8.0
+visual blurring,9.0,9.0,True,9.0
+Itching,10.0,10.0,True,10.0
+Irritability,11.0,11.0,True,11.0
+delayed healing,12.0,12.0,False,12.0
+partial paresis,13.0,13.0,False,13.0
+muscle stiffness,14.0,14.0,False,14.0
+Alopecia,15.0,15.0,False,15.0
+Obesity,16.0,16.0,False,16.0
+Age_<30,17.0,17.0,False,17.0
+Age_30-40,18.0,18.0,False,18.0
+Age_40-50,19.0,19.0,False,19.0
+Age_50-60,20.0,20.0,False,20.0
+Age_60+,21.0,21.0,False,21.0
+Triad_Score,22.0,24.5,False,23.25
+Metabolic_Score,23.0,24.5,False,23.75
+Neural_Score,24.0,24.5,False,24.25
+Age_obesity_interaction,25.0,24.5,False,24.75
+Age_polyuria_interaction,26.0,24.5,False,25.25
+Total_Symptoms,27.0,24.5,False,25.75
