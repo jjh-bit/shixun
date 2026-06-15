@@ -215,7 +215,7 @@ def main():
 
     except Exception as e:
         print(f"\n运行出错：{str(e)}")
-        exit(1)
+        raise
 
 
 if __name__ == "__main__":

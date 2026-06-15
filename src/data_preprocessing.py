@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import logging
@@ -132,7 +133,7 @@ def preprocess_data(input_file: str, export_csv: bool = False) -> pd.DataFrame:
         
         # Step 4: 根据需求决定是否落盘保存中间结果
         if export_csv:
-            output_file = 'cleaned_' + input_file.split('/')[-1]
+            output_file = 'cleaned_' + os.path.basename(input_file)
             export_data(final_df, output_file)
             
         logger.info("========== 数据预处理模块执行完毕 ==========")
