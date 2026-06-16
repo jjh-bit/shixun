@@ -148,6 +148,12 @@ def preprocess_data(input_file: str, export_csv: bool = False) -> pd.DataFrame:
 
 # 本地测试入口
 if __name__ == "__main__":
-    # 仅当直接运行此脚本时执行，验证逻辑是否正确
-    test_df = preprocess_data('糖尿病预测.csv', export_csv=True)
-    print("返回的数据维度:", test_df.shape)
+    # 定位数据文件（基于脚本位置，不依赖 CWD）
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    test_file = os.path.join(BASE_DIR, "data", "糖尿病预测.csv")
+    if not os.path.exists(test_file):
+        print(f"❌ 找不到数据文件: {test_file}")
+        print("请确保 data/糖尿病预测.csv 存在")
+    else:
+        test_df = preprocess_data(test_file, export_csv=True)
+        print("返回的数据维度:", test_df.shape)

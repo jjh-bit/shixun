@@ -32,31 +32,37 @@ def get_project_paths():
     return data_dir, model_save_dir
 
 
-def load_train_data_only(data_dir, data_prefix="selected_features"):
-    """仅加载划分后的训练集（移除验证集相关逻辑）"""
-    # 仅读取训练集文件（无需加载验证集）
+def load_train_val_data(data_dir, data_prefix="selected_features"):
+    """加载训练集 + 验证集，合并后用于模型训练（测试集保持独立，留给 D 评估）"""
     train_path = os.path.join(data_dir, f"{data_prefix}_train_70.csv")
-    test_path = os.path.join(data_dir, f"{data_prefix}_test_15.csv")  # 保留测试集路径（后续可用于预测）
+    val_path = os.path.join(data_dir, f"{data_prefix}_val_15.csv")
 
-    # 检查训练集文件是否存在（避免路径错误）
-    if not os.path.exists(train_path):
-        raise FileNotFoundError(f"训练集文件缺失：{train_path}\n请先运行 C_数据集划分.py 生成文件")
+    # 检查文件是否存在
+    for p, label in [(train_path, "训练集"), (val_path, "验证集")]:
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"{label}文件缺失：{p}\n请先运行 C_数据集划分.py 生成文件")
 
-    # 仅加载训练集数据
+    # 加载训练集和验证集
     train_df = pd.read_csv(train_path)
+    val_df = pd.read_csv(val_path)
 
-    # 分离训练集特征X和标签y（默认标签列在最后一列）
-    X_train = train_df.iloc[:, :-1]
-    y_train = train_df.iloc[:, -1]
+    # 合并训练集 + 验证集 → 模型用 85% 的数据训练
+    combined_df = pd.concat([train_df, val_df], ignore_index=True)
 
-    # 输出训练集基本信息（明确仅用训练集）
+    # 分离特征 X 和标签 y（标签列在最后一列）
+    X_train = combined_df.iloc[:, :-1]
+    y_train = combined_df.iloc[:, -1]
+
+    # 输出合并后的数据集信息
     print("=" * 60)
-    print(f"✅ 成功加载 {data_prefix} 训练集（仅用训练集训练模型）")
-    print(f"训练集：特征数={X_train.shape[1]}, 样本数={X_train.shape[0]}, 患病样本数={sum(y_train == 1)}")
-    print(f"注：已跳过验证集，模型仅基于训练集完成训练")
+    print(f"✅ 成功加载 {data_prefix} 训练集 + 验证集（合并用于训练）")
+    print(f"  训练集: {train_df.shape[0]} 行  +  验证集: {val_df.shape[0]} 行")
+    print(f"  合并后: {combined_df.shape[0]} 行（85% 数据用于训练）")
+    print(f"  特征数={X_train.shape[1]}, 患病样本数={int(sum(y_train == 1))}")
+    print(f"  注：测试集（15%）保持独立，由成员 D 用于最终评估")
     print("=" * 60)
 
-    return X_train, y_train  # 仅返回训练集数据
+    return X_train, y_train
 
 
 def train(X_train, y_train, model_save_dir):
@@ -153,10 +159,10 @@ def main():
     # 1. 获取项目路径（自动适配）
     data_dir, model_save_dir = get_project_paths()
 
-    # 2. 仅加载训练集（如需用全量特征，将 data_prefix 改为 "full_features" 即可）
-    X_train, y_train = load_train_data_only(
+    # 2. 加载训练集 + 验证集，合并后用于训练（85% 数据）
+    X_train, y_train = load_train_val_data(
         data_dir=data_dir,
-        data_prefix="特征工程输出"  # 默认用筛选后特征，可切换为 "full_features"
+        data_prefix="特征工程输出"  # 可切换为 "full_features" 使用全量特征
     )
 
     # 3. 仅用训练集训练模型
