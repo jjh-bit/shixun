@@ -34,3 +34,7 @@ virtualenv/
 # 自动化生成的数据和结果（非常重要！）
 /data/*.csv
 /results/*
+/models/*
+
+# 日志文件
+*.log
