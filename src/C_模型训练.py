@@ -1,222 +1,171 @@
-import os
-import numpy as np
+# src/C_模型训练.py
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
 import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import (accuracy_score, precision_score,
-                             recall_score, f1_score, roc_auc_score,
-                             confusion_matrix)
+import os
+from sklearn.preprocessing import StandardScaler
+# 传统机器学习模型
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+# 树模型
+import xgboost as xgb
 import lightgbm as lgb
-
-# ===================== 1. 路径配置（适配真实数据） =====================
-# 项目根目录
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 数据路径优先级：特征工程输出 > 全量特征 > 清洗后原始数据
-DATA_PATHS = [
-    os.path.join(BASE_DIR, "data", "特征工程输出_给C成员.csv"),
-    os.path.join(BASE_DIR, "data", "特征工程全量特征_给C成员.csv"),
-    os.path.join(BASE_DIR, "data", "cleaned_糖尿病预测.csv")
-]
-# 输出路径
-MODEL_DIR = os.path.join(BASE_DIR, "models")
-RESULT_DIR = os.path.join(BASE_DIR, "results")
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(RESULT_DIR, exist_ok=True)
-
-# 绘图配置（支持中文）
-plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
-plt.rcParams['figure.dpi'] = 100
+# 深度学习MLP
+from sklearn.neural_network import MLPClassifier
 
 
-# ===================== 2. 数据加载与校验（适配真实数据格式） =====================
-def load_best_data(data_paths):
-    """自动选择可用的最优数据集"""
-    for path in data_paths:
-        if os.path.exists(path):
-            print(f"加载最优数据集：{os.path.basename(path)}")
-            df = pd.read_csv(path)
-            # 数据格式校验（确保标签列存在）
-            if "class" not in df.columns:
-                # 适配可能的标签列名（如cleaned数据可能用"是否患病"）
-                if "是否患病" in df.columns:
-                    df.rename(columns={"是否患病": "class"}, inplace=True)
-                    print("ℹ标签列名已从'是否患病'改为'class'")
-                else:
-                    raise ValueError(f"数据集 {os.path.basename(path)} 无标签列（需'class'或'是否患病'）")
-            # 查看数据基本信息
-            print(f"数据集形状：{df.shape} | 标签分布：")
-            print(df["class"].value_counts())
-            return df
-    raise FileNotFoundError("未找到任何数据文件，请检查data目录下是否有3份数据之一")
+def get_project_paths():
+    """自动获取项目各目录路径（适配任意环境）"""
+    # 当前脚本路径（src/C_模型训练.py）
+    current_script_path = os.path.abspath(__file__)
+    # 项目根目录（shixun）
+    project_root = os.path.dirname(os.path.dirname(current_script_path))
+    # 数据目录（shixun/data）
+    data_dir = os.path.join(project_root, "data")
+    # 模型保存目录（shixun/models）
+    model_save_dir = os.path.join(project_root, "models")
+
+    # 确保目录存在（首次运行自动创建）
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(model_save_dir, exist_ok=True)
+
+    return data_dir, model_save_dir
 
 
-def split_data(df, test_size=0.3, random_state=42):
-    """分层划分训练集/测试集（医疗场景保证类别均衡）"""
-    X = df.drop("class", axis=1)
-    y = df["class"]
-    # 处理可能的标签值（如1/0或Positive/Negative）
-    if y.dtype == "object":
-        y = y.map({"Positive": 1, "Negative": 0})
-        print("ℹ标签已从文字(Positive/Negative)转为数值(1/0)")
-    # 分层划分
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
+def load_train_data_only(data_dir, data_prefix="selected_features"):
+    """仅加载划分后的训练集（移除验证集相关逻辑）"""
+    # 仅读取训练集文件（无需加载验证集）
+    train_path = os.path.join(data_dir, f"{data_prefix}_train_70.csv")
+    test_path = os.path.join(data_dir, f"{data_prefix}_test_15.csv")  # 保留测试集路径（后续可用于预测）
+
+    # 检查训练集文件是否存在（避免路径错误）
+    if not os.path.exists(train_path):
+        raise FileNotFoundError(f"训练集文件缺失：{train_path}\n请先运行 C_数据集划分.py 生成文件")
+
+    # 仅加载训练集数据
+    train_df = pd.read_csv(train_path)
+
+    # 分离训练集特征X和标签y（默认标签列在最后一列）
+    X_train = train_df.iloc[:, :-1]
+    y_train = train_df.iloc[:, -1]
+
+    # 输出训练集基本信息（明确仅用训练集）
+    print("=" * 60)
+    print(f"✅ 成功加载 {data_prefix} 训练集（仅用训练集训练模型）")
+    print(f"训练集：特征数={X_train.shape[1]}, 样本数={X_train.shape[0]}, 患病样本数={sum(y_train == 1)}")
+    print(f"注：已跳过验证集，模型仅基于训练集完成训练")
+    print("=" * 60)
+
+    return X_train, y_train  # 仅返回训练集数据
+
+
+def train(X_train, y_train, model_save_dir):
+    """仅用训练集训练5类模型并保存"""
+    # 1. 数据标准化（仅逻辑回归、MLP需要，树模型无需标准化）
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)  # 仅用训练集拟合标准化器
+    # 保存标准化器（后续用测试集预测时需复用）
+    scaler_path = os.path.join(model_save_dir, "scaler.pkl")
+    joblib.dump(scaler, scaler_path)
+    print(f"\n📊 标准化器已保存（基于训练集拟合）：{scaler_path}")
+
+    # 2. 初始化模型字典（统一管理）
+    model_dict = {}
+
+    # 3. 训练基线模型：逻辑回归（仅用训练集）
+    print("\n1. 🚀 训练基线模型：Logistic Regression（仅训练集）")
+    lr = LogisticRegression(
+        max_iter=2000,  # 确保在训练集上收敛
+        class_weight="balanced",  # 处理医疗数据类别失衡
+        random_state=42  # 固定随机种子，结果可复现
     )
-    print(f"训练集：{X_train.shape} | 测试集：{X_test.shape}")
-    return X_train, X_test, y_train, y_test
+    lr.fit(X_train_scaled, y_train)  # 仅传入训练集数据
+    model_dict["logistic_regression"] = lr
 
-
-# ===================== 3. 模型训练与优化（医疗场景参数） =====================
-def train_lgbm_medical(X_train, X_test, y_train, y_test):
-    """训练LightGBM（适配新版API，无参数错误）"""
-    lgb_train = lgb.Dataset(X_train, y_train, free_raw_data=False)
-    lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train, free_raw_data=False)
-
-    params = {
-        "objective": "binary",
-        "metric": "auc",
-        "learning_rate": 0.08,
-        "max_depth": 4,
-        "min_split_gain": 0.02,
-        "min_child_samples": 8,
-        "subsample": 0.85,
-        "colsample_bytree": 0.8,
-        "verbose": -1,
-        "random_state": 42,
-        "class_weight": "balanced"
-    }
-
-    print("\n开始训练LightGBM（启用早停）")
-    # 修正：早停仅通过 callbacks 传入，不写 early_stopping_rounds 参数
-    model = lgb.train(
-        params,
-        train_set=lgb_train,
-        num_boost_round=200,
-        valid_sets=[lgb_eval],
-        callbacks=[
-            lgb.log_evaluation(period=10),           # 每10轮打印一次日志
-            lgb.early_stopping(stopping_rounds=15)    # 早停（新版API正确写法）
-        ]
+    # 4. 训练核心树模型1：随机森林（仅用训练集）
+    print("2. 🚀 训练核心模型：Random Forest（仅训练集）")
+    rf = RandomForestClassifier(
+        n_estimators=150,  # 平衡训练集拟合效果与效率
+        max_depth=10,  # 限制树深，避免训练集过拟合
+        class_weight="balanced",
+        random_state=42
     )
+    rf.fit(X_train, y_train)  # 树模型用原始训练集特征，无需标准化
+    model_dict["random_forest"] = rf
 
-    model_path = os.path.join(MODEL_DIR, "lightgbm_medical_best.pkl")
-    joblib.dump(model, model_path)
-    print(f"\n模型已保存至：{model_path}")
-    return model
+    # 5. 训练核心树模型2：XGBoost（仅用训练集，无废弃参数）
+    print("3. 🚀 训练核心模型：XGBoost（仅训练集）")
+    xgb_model = xgb.XGBClassifier(
+        n_estimators=150,
+        max_depth=8,
+        learning_rate=0.05,  # 低学习率适配训练集单数据来源
+        scale_pos_weight=sum(y_train == 0) / sum(y_train == 1),  # 基于训练集计算类别权重
+        eval_metric="logloss",
+        random_state=42
+    )
+    xgb_model.fit(X_train, y_train)  # 仅用训练集训练
+    model_dict["xgboost"] = xgb_model
 
+    # 6. 训练核心树模型3：LightGBM（仅用训练集，无警告）
+    print("4. 🚀 训练核心模型：LightGBM（仅训练集）")
+    lgb_model = lgb.LGBMClassifier(
+        n_estimators=100,
+        max_depth=5,  # 降低复杂度，适配训练集单数据训练
+        learning_rate=0.03,
+        class_weight="balanced",
+        random_state=42,
+        verbose=-1,  # 关闭冗余日志
+        reg_alpha=0.1,  # 正则化避免训练集过拟合
+        reg_lambda=0.1
+    )
+    lgb_model.fit(X_train, y_train)  # 仅用训练集训练
+    model_dict["lightgbm"] = lgb_model
 
-# ===================== 4. 医疗场景评估与可视化 =====================
-def evaluate_medical_model(model, X_test, y_test):
-    """医疗场景评估：重点输出召回率（漏诊率）、AUC"""
-    # 预测概率与标签
-    y_proba = model.predict(X_test, num_iteration=model.best_iteration)
-    y_pred = np.round(y_proba).astype(int)  # 默认阈值0.5
+    # 7. 训练深度学习模型：MLP（仅用训练集）
+    print("5. 🚀 训练深度学习模型：MLP（仅训练集）")
+    mlp = MLPClassifier(
+        hidden_layer_sizes=(256, 128, 64),
+        activation="relu",
+        max_iter=1000,  # 足够迭代次数确保在训练集上收敛
+        batch_size=32,  # 小批量适配训练集样本量
+        random_state=42
+    )
+    mlp.fit(X_train_scaled, y_train)  # 仅用标准化后的训练集
+    model_dict["mlp"] = mlp
 
-    # 核心指标
-    metrics = {
-        "准确率": accuracy_score(y_test, y_pred),
-        "精确率": precision_score(y_test, y_pred),
-        "召回率(防漏诊)": recall_score(y_test, y_pred),
-        "F1分数": f1_score(y_test, y_pred),
-        "AUC-ROC": roc_auc_score(y_test, y_proba)
-    }
+    # 8. 保存所有仅用训练集训练的模型
+    for model_name, model in model_dict.items():
+        model_path = os.path.join(model_save_dir, f"{model_name}.pkl")
+        joblib.dump(model, model_path)
+        print(f"✅ 仅用训练集训练的模型已保存：{model_path}")
 
-    # 打印评估结果（突出医疗重点）
+    # 9. 输出训练完成总结
     print("\n" + "=" * 60)
-    print("医疗场景模型评估结果")
+    print("🎉 所有模型训练完成（仅基于训练集）！")
+    print("训练模型列表：", list(model_dict.keys()))
+    print(f"📁 模型及标准化器已保存至：{model_save_dir}")
+    print("注：所有模型未使用验证集，仅通过训练集完成参数学习")
     print("=" * 60)
-    for name, val in metrics.items():
-        print(f"{name:12s}: {val:.4f}")
-    print("=" * 60)
 
-    # 保存指标到CSV
-    metrics_df = pd.DataFrame([metrics])
-    metrics_df.to_csv(os.path.join(RESULT_DIR, "医疗场景评估指标.csv"),
-                      index=False, encoding="utf-8-sig")
-    print(f"评估指标已保存至 results/医疗场景评估指标.csv")
-    return metrics, y_pred, y_proba
+    return model_dict
 
-
-def plot_medical_visualizations(model, X_test, y_test, y_pred):
-    """绘制医疗场景关键图：特征重要性、混淆矩阵"""
-    # 1. 特征重要性（辅助医生判断风险因子）
-    feat_importance = pd.Series(
-        model.feature_importance(importance_type="gain"),  # 按增益计算重要性
-        index=X_test.columns
-    ).sort_values(ascending=False)
-
-    plt.figure(figsize=(12, 6))
-    feat_importance.head(15).plot(kind="bar", color="#1f77b4")  # 显示Top15特征
-    plt.title("LightGBM 特征重要性（按增益排序）", fontsize=14)
-    plt.xlabel("特征名称", fontsize=12)
-    plt.ylabel("特征增益（Gain）", fontsize=12)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.savefig(os.path.join(RESULT_DIR, "01_特征重要性.png"), dpi=300)
-    plt.close()
-    print("特征重要性图已保存")
-
-    # 2. 混淆矩阵（医疗场景：直观看漏诊/误诊）
-    cm = confusion_matrix(y_test, y_pred)
-    plt.figure(figsize=(8, 6))
-    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Greens)
-    plt.title("混淆矩阵", fontsize=14)
-    plt.colorbar()
-    tick_labels = ["未患病(0)", "患病(1)"]
-    plt.xticks([0, 1], tick_labels, fontsize=12)
-    plt.yticks([0, 1], tick_labels, fontsize=12)
-
-    # 标注数值（漏诊/误诊重点标注）
-    thresh = cm.max() / 2
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            plt.text(j, i, format(cm[i, j], "d"),
-                     ha="center", va="center",
-                     color="white" if cm[i, j] > thresh else "black",
-                     fontsize=14)
-            # 标注漏诊（真实患病但预测未患病）
-            if i == 1 and j == 0:
-                plt.text(j, i + 0.25, "漏诊", ha="center", va="center", color="red", fontweight="bold")
-            # 标注误诊（真实未患病但预测患病）
-            if i == 0 and j == 1:
-                plt.text(j, i + 0.25, "误诊", ha="center", va="center", color="orange", fontweight="bold")
-
-    plt.ylabel("真实标签", fontsize=12)
-    plt.xlabel("预测标签", fontsize=12)
-    plt.tight_layout()
-    plt.savefig(os.path.join(RESULT_DIR, "02_混淆矩阵.png"), dpi=300)
-    plt.close()
-    print("混淆矩阵图已保存")
-
-
-# ===================== 5. 主流程（一键运行） =====================
 def main():
-    try:
-        # 1. 加载最优数据
-        df = load_best_data(DATA_PATHS)
-        # 2. 划分数据
-        X_train, X_test, y_train, y_test = split_data(df)
-        # 3. 训练优化模型
-        model = train_lgbm_medical(X_train, X_test, y_train, y_test)
-        # 4. 医疗场景评估
-        metrics, y_pred, y_proba = evaluate_medical_model(model, X_test, y_test)
-        # 5. 可视化输出
-        plot_medical_visualizations(model, X_test, y_test, y_pred)
+    # 1. 获取项目路径（自动适配）
+    data_dir, model_save_dir = get_project_paths()
 
-        print("\n" + "=" * 60)
-        print("全部流程完成！输出文件清单：")
-        print(f"1. 模型文件：{os.path.join(MODEL_DIR, 'lightgbm_medical_best.pkl')}")
-        print(f"2. 评估指标：{os.path.join(RESULT_DIR, '医疗场景评估指标.csv')}")
-        print(f"3. 特征重要性：{os.path.join(RESULT_DIR, '01_特征重要性.png')}")
-        print(f"4. 混淆矩阵：{os.path.join(RESULT_DIR, '02_混淆矩阵.png')}")
-        print("=" * 60)
+    # 2. 仅加载训练集（如需用全量特征，将 data_prefix 改为 "full_features" 即可）
+    X_train, y_train = load_train_data_only(
+        data_dir=data_dir,
+        data_prefix="特征工程输出"  # 默认用筛选后特征，可切换为 "full_features"
+    )
 
-    except Exception as e:
-        print(f"\n运行出错：{str(e)}")
-        raise
+    # 3. 仅用训练集训练模型
+    trained_models = train(
+        X_train=X_train,
+        y_train=y_train,
+        model_save_dir=model_save_dir
+    )
 
-
+# 主执行逻辑（直接点击运行时触发）
 if __name__ == "__main__":
     main()

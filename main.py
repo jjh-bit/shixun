@@ -17,7 +17,7 @@ if BASE_DIR not in sys.path:
 
 # 导入各模块
 from src.data_preprocessing import preprocess_data
-from src import B_特征工程, C_模型训练, evaluation
+from src import B_特征工程, C_模型训练, C_数据集划分, evaluation
 import src.data_preprocessing as dp_module
 
 # 强制重载，确保每次运行都读取磁盘上的最新代码，避免缓存旧逻辑
@@ -64,6 +64,7 @@ def main():
     # 4. 阶段 3：模型训练 (成员 C)
     print(">>> 正在执行阶段 3: 模型训练 (成员 C) ...")
     try:
+        C_数据集划分.main()
         C_模型训练.main()
     except Exception as e:
         print(f"❌ 阶段 3 失败: {e}")
