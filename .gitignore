@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.orig
+
+# Virtual Environment
+.conda/
+venv/
+virtualenv/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# 自动化生成的数据和结果（非常重要！）
+/data/*.csv
+/results/*
